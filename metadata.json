@@ -1,0 +1,6 @@
+{
+  "name": "ApexClean Pro - Optimizador de Sistema y Limpieza de PC",
+  "description": "Suite profesional para PC: limpieza profunda de archivos basura, aceleración del arranque, optimizador de registro, gestor de procesos en segundo plano y monitoreo de hardware en tiempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
