@@ -2,6 +2,8 @@
   "name": "apexclean-pro",
   "private": true,
   "version": "1.0.0",
+  "description": "ApexClean Pro - Suite de Optimización y Limpieza para PC",
+  "author": "ApexClean",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {

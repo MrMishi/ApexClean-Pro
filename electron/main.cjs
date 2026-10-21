@@ -1,10 +1,12 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 let mainWindow = null;
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const iconPath = path.join(__dirname, '../public/favicon.ico');
+  const windowOptions = {
     width: 1280,
     height: 820,
     minWidth: 1024,
@@ -20,8 +22,13 @@ function createWindow() {
       sandbox: true,
       preload: path.join(__dirname, 'preload.cjs'),
     },
-    icon: path.join(__dirname, '../public/favicon.ico'),
-  });
+  };
+
+  if (fs.existsSync(iconPath)) {
+    windowOptions.icon = iconPath;
+  }
+
+  mainWindow = new BrowserWindow(windowOptions);
 
   // In production, load the built index.html from dist
   const distIndexPath = path.join(__dirname, '../dist/index.html');
