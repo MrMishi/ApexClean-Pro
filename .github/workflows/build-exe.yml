@@ -21,7 +21,12 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        run: |
+          if (Test-Path package-lock.json) { Remove-Item package-lock.json -Force }
+          npm install --legacy-peer-deps
+
+      - name: Ensure Windows native build bindings
+        run: npm install -D @rolldown/binding-win32-x64-msvc --legacy-peer-deps
 
       - name: Build web application
         run: npm run build
