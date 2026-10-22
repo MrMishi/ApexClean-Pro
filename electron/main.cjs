@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { registerSystemBridge } = require('./systemBridge.cjs');
 
 let mainWindow = null;
 
@@ -69,6 +70,7 @@ ipcMain.on('app-close', () => {
 });
 
 app.whenReady().then(() => {
+  registerSystemBridge();
   createWindow();
 
   app.on('activate', () => {

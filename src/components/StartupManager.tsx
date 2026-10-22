@@ -9,6 +9,7 @@ import {
   Filter,
   Sparkles,
   Info,
+  RefreshCw,
 } from 'lucide-react';
 import { StartupApp } from '../types/system';
 
@@ -16,12 +17,18 @@ interface StartupManagerProps {
   apps: StartupApp[];
   onToggleApp: (id: string) => void;
   onApplyRecommended: () => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+  biosTimeSeconds?: number;
 }
 
 export const StartupManager: React.FC<StartupManagerProps> = ({
   apps,
   onToggleApp,
   onApplyRecommended,
+  onRefresh,
+  isRefreshing = false,
+  biosTimeSeconds = 5.9,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [impactFilter, setImpactFilter] = useState<'Todos' | 'Alto' | 'Medio' | 'Bajo'>('Todos');
@@ -80,6 +87,18 @@ export const StartupManager: React.FC<StartupManagerProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className="px-3 py-2 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white rounded-lg transition-colors flex items-center gap-1.5 border border-slate-700 whitespace-nowrap disabled:opacity-50"
+              title="Volver a escanear aplicaciones de arranque de Windows"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`} />
+              <span>{isRefreshing ? 'Escaneando...' : 'Actualizar'}</span>
+            </button>
+          )}
+
           <button
             onClick={handleApplyRecommended}
             className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
@@ -103,15 +122,22 @@ export const StartupManager: React.FC<StartupManagerProps> = ({
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-center">
           <div className="space-y-1">
-            <span className="text-xs text-slate-400 flex items-center gap-1.5">
-              <Clock className="w-4 h-4 text-cyan-400" />
-              Tiempo de Arranque
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-cyan-400" />
+                Tiempo de Arranque
+              </span>
+              {biosTimeSeconds && (
+                <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/50">
+                  BIOS: {biosTimeSeconds}s
+                </span>
+              )}
+            </div>
             <div className="text-3xl font-extrabold text-slate-100 font-mono">
               {currentBootTime}s
             </div>
             <p className="text-xs text-slate-400">
-              Carga total hasta el escritorio listo.
+              Carga total estimada hasta el escritorio listo.
             </p>
           </div>
 

@@ -26,7 +26,7 @@ jobs:
           npm install --legacy-peer-deps
 
       - name: Ensure Windows native build bindings
-        run: npm install -D @rolldown/binding-win32-x64-msvc --legacy-peer-deps
+        run: npm install -D @rolldown/binding-win32-x64-msvc lightningcss-win32-x64-msvc --legacy-peer-deps
 
       - name: Build web application
         run: npm run build

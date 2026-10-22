@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   Sparkles,
   Shield,
@@ -6,6 +5,7 @@ import {
   Square,
   X,
   RotateCcw,
+  Search,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -14,6 +14,7 @@ interface HeaderProps {
   onQuickCleanClick: () => void;
   onPurgeRam: () => void;
   isPurgingRam: boolean;
+  onOpenAuditModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   onQuickCleanClick,
   onPurgeRam,
   isPurgingRam,
+  onOpenAuditModal,
 }) => {
   return (
     <header className="bg-slate-900 border-b border-slate-800 select-none">
@@ -80,6 +82,17 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right: Quick actions */}
         <div className="flex items-center gap-3 shrink-0">
+          {onOpenAuditModal && (
+            <button
+              onClick={onOpenAuditModal}
+              className="px-3 py-1.5 text-xs font-semibold text-cyan-300 hover:text-white bg-cyan-950/70 hover:bg-cyan-900/90 border border-cyan-800/80 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-sm"
+              title="Escanear y auditar especificaciones reales de hardware"
+            >
+              <Search className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Analizar PC</span>
+            </button>
+          )}
+
           <button
             onClick={onPurgeRam}
             disabled={isPurgingRam}

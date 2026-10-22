@@ -11,6 +11,8 @@ import {
   RotateCcw,
   Sparkles,
   Info,
+  Search,
+  CheckCircle2,
 } from 'lucide-react';
 import { HardwareStats } from '../types/system';
 import { formatBytes } from '../utils/hardwareProbe';
@@ -22,6 +24,9 @@ interface HardwareMonitorProps {
   onPurgeRam: () => void;
   isPurgingRam: boolean;
   onQuickCleanClick: () => void;
+  onOpenAuditModal: () => void;
+  isHardwareVerified?: boolean;
+  analyzedAt?: string;
 }
 
 export const HardwareMonitor: React.FC<HardwareMonitorProps> = ({
@@ -31,6 +36,9 @@ export const HardwareMonitor: React.FC<HardwareMonitorProps> = ({
   onPurgeRam,
   isPurgingRam,
   onQuickCleanClick,
+  onOpenAuditModal,
+  isHardwareVerified,
+  analyzedAt,
 }) => {
   const [selectedCoreView, setSelectedCoreView] = useState<'all' | 'summary'>('summary');
   const [notification, setNotification] = useState<string | null>(null);
@@ -66,16 +74,36 @@ export const HardwareMonitor: React.FC<HardwareMonitorProps> = ({
             <span className={isPaused ? 'text-amber-400' : 'text-emerald-400'}>
               {isPaused ? 'Pausado' : 'En vivo'}
             </span>
+            <span aria-hidden="true">·</span>
+            {isHardwareVerified ? (
+              <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Especificaciones Verificadas {analyzedAt ? `(${analyzedAt})` : ''}
+              </span>
+            ) : (
+              <span className="text-cyan-400">
+                Hardware Autodetectado
+              </span>
+            )}
           </div>
           <h2 className="text-xl font-bold text-slate-100 mt-1">
             Rendimiento del Sistema
           </h2>
           <p className="text-xs text-slate-400 max-w-xl">
-            Carga de procesador, memoria, almacenamiento y adaptadores de red.
+            Carga en tiempo real de procesador, memoria RAM, almacenamiento y adaptadores gráficos.
           </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={onOpenAuditModal}
+            className="px-3.5 py-2 text-xs font-semibold text-cyan-300 bg-cyan-950/70 hover:bg-cyan-900/90 border border-cyan-700/70 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap shadow-sm"
+            title="Analiza y sincroniza las especificaciones reales de tu PC"
+          >
+            <Search className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Analizar PC</span>
+          </button>
+
           <button
             onClick={onTogglePause}
             className="px-3 py-2 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white rounded-lg transition-colors flex items-center gap-1.5 border border-slate-700 whitespace-nowrap"
@@ -87,7 +115,7 @@ export const HardwareMonitor: React.FC<HardwareMonitorProps> = ({
           <button
             onClick={handleRamPurge}
             disabled={isPurgingRam}
-            className="px-3.5 py-2 text-xs font-semibold text-cyan-300 bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-700/60 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap shadow-sm disabled:opacity-50"
+            className="px-3.5 py-2 text-xs font-semibold text-emerald-300 bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-700/60 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap shadow-sm disabled:opacity-50"
           >
             <RotateCcw className={`w-3.5 h-3.5 ${isPurgingRam ? 'animate-spin' : ''}`} />
             <span>{isPurgingRam ? 'Liberando...' : 'Liberar RAM'}</span>
@@ -101,6 +129,40 @@ export const HardwareMonitor: React.FC<HardwareMonitorProps> = ({
             <span>Optimización 1-Clic</span>
           </button>
         </div>
+      </div>
+
+      {/* Hardware Audit Summary Strip */}
+      <div className="bg-slate-900/70 border border-slate-800/80 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
+            <Search className="w-4 h-4" />
+          </div>
+          <div className="text-xs">
+            <div className="font-semibold text-slate-200 flex items-center gap-2 flex-wrap">
+              <span>Especificaciones de Hardware de tu Equipo</span>
+              {isHardwareVerified ? (
+                <span className="text-[10px] bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-800 font-mono">
+                  ✓ Verificadas
+                </span>
+              ) : (
+                <span className="text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded-full border border-cyan-800 font-mono">
+                  Detección en tiempo real
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-2xl">
+              CPU: <span className="text-slate-300 font-medium">{stats.cpu.model}</span> ({stats.cpu.coresCount} núcleos) · GPU: <span className="text-slate-300 font-medium">{stats.gpu.name}</span> · RAM: <span className="text-slate-300 font-medium">{stats.ram.totalGb} GB</span>
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={onOpenAuditModal}
+          className="px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors flex items-center gap-1.5 shrink-0 whitespace-nowrap self-start sm:self-auto"
+        >
+          <Search className="w-3 h-3 text-cyan-400" />
+          <span>{isHardwareVerified ? 'Re-auditar Hardware' : 'Escanear mi PC'}</span>
+        </button>
       </div>
 
       {notification && (
@@ -153,9 +215,13 @@ export const HardwareMonitor: React.FC<HardwareMonitorProps> = ({
             </div>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-            <span className="truncate max-w-[140px]">{stats.cpu.model}</span>
-            <span className="font-mono shrink-0">{stats.cpu.coresCount} núcleos</span>
+          <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400 gap-2">
+            <span className="truncate flex-1 font-medium text-slate-300" title={stats.cpu.model}>
+              {stats.cpu.model}
+            </span>
+            <span className="font-mono shrink-0 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+              {stats.cpu.coresCount} núcleos
+            </span>
           </div>
         </div>
 
@@ -279,9 +345,11 @@ export const HardwareMonitor: React.FC<HardwareMonitorProps> = ({
             </div>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-            <span className="truncate max-w-[130px]">{stats.gpu.name}</span>
-            <span className="font-mono text-slate-400">{stats.gpu.fanRpm} RPM</span>
+          <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400 gap-2">
+            <span className="truncate flex-1 font-medium text-slate-300" title={stats.gpu.name}>
+              {stats.gpu.name}
+            </span>
+            <span className="font-mono text-slate-400 shrink-0">{stats.gpu.fanRpm} RPM</span>
           </div>
         </div>
       </div>

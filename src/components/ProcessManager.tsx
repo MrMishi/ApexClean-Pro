@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   CheckCircle2,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { SystemProcess } from '../types/system';
 
@@ -19,6 +20,8 @@ interface ProcessManagerProps {
   onToggleSuspendProcess: (pid: number) => void;
   onChangePriority: (pid: number, priority: SystemProcess['priority']) => void;
   onOptimizeBackground: () => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 export const ProcessManager: React.FC<ProcessManagerProps> = ({
@@ -27,6 +30,8 @@ export const ProcessManager: React.FC<ProcessManagerProps> = ({
   onToggleSuspendProcess,
   onChangePriority,
   onOptimizeBackground,
+  onRefresh,
+  isRefreshing = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'Todos' | 'Segundo Plano' | 'Usuario' | 'Sistema' | 'Consumo Alto'>('Todos');
@@ -75,6 +80,18 @@ export const ProcessManager: React.FC<ProcessManagerProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className="px-3 py-2 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white rounded-lg transition-colors flex items-center gap-1.5 border border-slate-700 whitespace-nowrap disabled:opacity-50"
+              title="Volver a escanear procesos de Windows"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`} />
+              <span>{isRefreshing ? 'Escaneando...' : 'Actualizar'}</span>
+            </button>
+          )}
+
           <button
             onClick={handleTurboOptimize}
             className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-all flex items-center gap-1.5 shadow-sm whitespace-nowrap"

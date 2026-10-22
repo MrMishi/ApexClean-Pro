@@ -9,8 +9,11 @@ import {
 import {
   createInitialHardwareStats,
   getSystemInfo,
+  getSavedHardwareSpecs,
+  CustomVerifiedSpecs,
 } from './utils/hardwareProbe';
-import { HardwareStats, SystemProcess } from './types/system';
+import { HardwareStats, SystemProcess, CpuCore } from './types/system';
+import { SystemInfo } from './types/electron';
 import { Header } from './components/Header';
 import { Sidebar, TabId } from './components/Sidebar';
 import { HardwareMonitor } from './components/HardwareMonitor';
@@ -20,12 +23,15 @@ import { ProcessManager } from './components/ProcessManager';
 import { RegistryCleaner } from './components/RegistryCleaner';
 import { SystemOptimizer } from './components/SystemOptimizer';
 import { OneClickModal } from './components/OneClickModal';
+import { HardwareAuditModal } from './components/HardwareAuditModal';
 
 export default function App() {
-  const [sysInfo] = useState(getSystemInfo());
+  const [sysInfo, setSysInfo] = useState<SystemInfo>(() => getSystemInfo());
   const [hardwareStats, setHardwareStats] = useState<HardwareStats>(createInitialHardwareStats);
   const [isPaused, setIsPaused] = useState(false);
   const [isPurgingRam, setIsPurgingRam] = useState(false);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [verifiedSpecs, setVerifiedSpecs] = useState<CustomVerifiedSpecs | null>(() => getSavedHardwareSpecs());
 
   // Core Data States
   const [junkItems, setJunkItems] = useState(INITIAL_JUNK_ITEMS);
@@ -34,6 +40,10 @@ export default function App() {
   const [registryIssues, setRegistryIssues] = useState(INITIAL_REGISTRY_ISSUES);
   const [systemTweaks, setSystemTweaks] = useState(INITIAL_SYSTEM_TWEAKS);
 
+  // Loading States
+  const [isScanningStartup, setIsScanningStartup] = useState(false);
+  const [isScanningProcesses, setIsScanningProcesses] = useState(false);
+
   // Active View Tab
   const [currentTab, setCurrentTab] = useState<TabId>('hardware');
   const [isOneClickModalOpen, setIsOneClickModalOpen] = useState(false);
@@ -41,9 +51,9 @@ export default function App() {
   // Play subtle synthesized audio chime
   const playChime = useCallback((type: 'success' | 'click' | 'purge' = 'click') => {
     try {
-      const AudioContext = window.AudioContext || (window as unknown as { webkitAudioContext: typeof window.AudioContext }).webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
@@ -51,8 +61,8 @@ export default function App() {
       gain.connect(ctx.destination);
 
       if (type === 'success') {
-        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
         gain.gain.setValueAtTime(0.06, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
         osc.start();
@@ -70,13 +80,233 @@ export default function App() {
     }
   }, []);
 
+  // Fetch real startup applications from Windows via Electron
+  const fetchStartupApps = useCallback(async () => {
+    if (!window.electronAPI?.getStartupApps) return;
+    try {
+      setIsScanningStartup(true);
+      const realApps = await window.electronAPI.getStartupApps();
+      if (realApps && realApps.length > 0) {
+        setStartupApps(realApps);
+      }
+    } catch (err) {
+      console.error('Error fetching real startup apps:', err);
+    } finally {
+      setIsScanningStartup(false);
+    }
+  }, []);
+
+  // Fetch real running processes from Windows via Electron
+  const fetchProcesses = useCallback(async () => {
+    if (!window.electronAPI?.getProcesses) return;
+    try {
+      setIsScanningProcesses(true);
+      const realProcs = await window.electronAPI.getProcesses();
+      if (realProcs && realProcs.length > 0) {
+        setProcesses(realProcs);
+      }
+    } catch (err) {
+      console.error('Error fetching real processes:', err);
+    } finally {
+      setIsScanningProcesses(false);
+    }
+  }, []);
+
+  // Fetch real junk items from Windows via Electron
+  const fetchJunk = useCallback(async () => {
+    if (!window.electronAPI?.scanJunk) return;
+    try {
+      const realJunk = await window.electronAPI.scanJunk();
+      if (realJunk && realJunk.length > 0) {
+        setJunkItems(realJunk);
+      }
+    } catch (err) {
+      console.error('Error scanning junk files:', err);
+    }
+  }, []);
+
+  // Apply verified or analyzed hardware specifications
+  const handleApplySpecs = useCallback((specs: CustomVerifiedSpecs) => {
+    setVerifiedSpecs(specs);
+    playChime('success');
+
+    setSysInfo((prev) => ({
+      ...prev,
+      osName: specs.osName,
+      cores: specs.cpuCores,
+      ramGb: specs.ramTotalGb,
+      cpuModel: specs.cpuModel,
+      gpuModel: specs.gpuModel,
+      storageModel: `${specs.diskLabel} (${specs.diskTotalGb} GB)`,
+    }));
+
+    setHardwareStats((prev) => {
+      const cores: CpuCore[] = Array.from({ length: specs.cpuCores }, (_, i) => ({
+        id: i + 1,
+        usage: prev.cpu.cores[i]?.usage ?? Math.floor(14 + Math.random() * 20),
+      }));
+
+      const usedRam = Number((specs.ramTotalGb * (prev.ram.usagePercent / 100)).toFixed(1));
+      const freeRam = Number((specs.ramTotalGb - usedRam).toFixed(1));
+      const diskUsed = Math.max(0, specs.diskTotalGb - specs.diskFreeGb);
+      const diskUsagePercent = Math.round((diskUsed / specs.diskTotalGb) * 100);
+
+      return {
+        ...prev,
+        cpu: {
+          ...prev.cpu,
+          model: specs.cpuModel,
+          coresCount: specs.cpuCores,
+          frequency: specs.cpuSpeedGhz,
+          cores,
+        },
+        ram: {
+          ...prev.ram,
+          totalGb: specs.ramTotalGb,
+          usedGb: usedRam,
+          freeGb: freeRam,
+          speedMhz: specs.ramSpeedMhz,
+        },
+        disk: {
+          ...prev.disk,
+          mainPartition: {
+            ...prev.disk.mainPartition,
+            totalGb: specs.diskTotalGb,
+            usedGb: diskUsed,
+            freeGb: specs.diskFreeGb,
+            usagePercent: diskUsagePercent,
+            label: specs.diskLabel,
+          },
+        },
+        gpu: {
+          ...prev.gpu,
+          name: specs.gpuModel,
+          vramTotalGb: specs.gpuVramGb,
+          vramUsedGb: Number((specs.gpuVramGb * 0.35).toFixed(1)),
+        },
+      };
+    });
+  }, [playChime]);
+
+  // Initial load of real Windows system data
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadInitialData() {
+      if (!window.electronAPI) return;
+
+      if (window.electronAPI.getSystemInfo) {
+        try {
+          const info = await window.electronAPI.getSystemInfo();
+          if (isMounted && info) {
+            setSysInfo(info);
+            // Sync with hardware stats if no manual override
+            setHardwareStats((prev) => ({
+              ...prev,
+              cpu: {
+                ...prev.cpu,
+                model: info.cpuModel || prev.cpu.model,
+                coresCount: info.cores || prev.cpu.coresCount,
+              },
+              gpu: {
+                ...prev.gpu,
+                name: info.gpuModel || prev.gpu.name,
+              },
+              ram: {
+                ...prev.ram,
+                totalGb: info.ramGb || prev.ram.totalGb,
+              },
+            }));
+          }
+        } catch (e) {
+          console.warn('Could not load system info:', e);
+        }
+      }
+
+      await fetchStartupApps();
+      await fetchProcesses();
+      await fetchJunk();
+    }
+
+    loadInitialData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchStartupApps, fetchProcesses, fetchJunk]);
+
   // Real-time telemetry ticker
   useEffect(() => {
     if (isPaused) return;
 
-    const interval = setInterval(() => {
+    let isSubscribed = true;
+
+    const interval = setInterval(async () => {
+      // 1. Try real hardware telemetry via Electron
+      if (window.electronAPI?.getHardwareStats) {
+        try {
+          const realStats = await window.electronAPI.getHardwareStats();
+          if (!isSubscribed || !realStats) return;
+
+          setHardwareStats((prev) => {
+            const cpuUsage = realStats.cpu?.usage ?? prev.cpu.usage;
+            const newCpuHistory = [...prev.cpu.history.slice(1), cpuUsage];
+            const ramUsage = realStats.ram?.usagePercent ?? prev.ram.usagePercent;
+            const newRamHistory = [...prev.ram.history.slice(1), ramUsage];
+
+            return {
+              ...prev,
+              cpu: {
+                ...prev.cpu,
+                usage: cpuUsage,
+                temp: realStats.cpu?.temp ?? prev.cpu.temp,
+                frequency: realStats.cpu?.frequency ?? prev.cpu.frequency,
+                coresCount: realStats.cpu?.coresCount ?? prev.cpu.coresCount,
+                cores: realStats.cpu?.cores ?? prev.cpu.cores,
+                history: newCpuHistory,
+                model: realStats.cpu?.model || prev.cpu.model,
+              },
+              ram: {
+                ...prev.ram,
+                totalGb: realStats.ram?.totalGb ?? prev.ram.totalGb,
+                usedGb: realStats.ram?.usedGb ?? prev.ram.usedGb,
+                freeGb: realStats.ram?.freeGb ?? prev.ram.freeGb,
+                cachedGb: realStats.ram?.cachedGb ?? prev.ram.cachedGb,
+                usagePercent: ramUsage,
+                history: newRamHistory,
+                speedMhz: realStats.ram?.speedMhz ?? prev.ram.speedMhz,
+              },
+              disk: realStats.disk ? {
+                ...prev.disk,
+                mainPartition: realStats.disk.mainPartition || prev.disk.mainPartition,
+                readSpeedMb: realStats.disk.readSpeedMb ?? prev.disk.readSpeedMb,
+                writeSpeedMb: realStats.disk.writeSpeedMb ?? prev.disk.writeSpeedMb,
+              } : prev.disk,
+              gpu: realStats.gpu ? {
+                ...prev.gpu,
+                name: realStats.gpu.name || prev.gpu.name,
+                usage: realStats.gpu.usage ?? prev.gpu.usage,
+                temp: realStats.gpu.temp ?? prev.gpu.temp,
+                vramUsedGb: realStats.gpu.vramUsedGb ?? prev.gpu.vramUsedGb,
+                vramTotalGb: realStats.gpu.vramTotalGb ?? prev.gpu.vramTotalGb,
+                fanRpm: realStats.gpu.fanRpm ?? prev.gpu.fanRpm,
+              } : prev.gpu,
+              network: realStats.network ? {
+                ...prev.network,
+                downloadSpeedKbps: realStats.network.downloadSpeedKbps ?? prev.network.downloadSpeedKbps,
+                uploadSpeedKbps: realStats.network.uploadSpeedKbps ?? prev.network.uploadSpeedKbps,
+                pingMs: realStats.network.pingMs ?? prev.network.pingMs,
+              } : prev.network,
+            };
+          });
+          return;
+        } catch {
+          // fallback to simulation
+        }
+      }
+
+      // 2. Fallback simulation when running in regular browser
       setHardwareStats((prev) => {
-        // Base CPU from active processes
         const activeProcessesCpu = processes.reduce(
           (acc, p) => acc + (p.status === 'Activo' ? p.cpuPercent : 0),
           0
@@ -87,23 +317,15 @@ export default function App() {
           Math.max(8, Math.round(activeProcessesCpu + 10 + cpuJitter))
         );
 
-        // Core usages
         const newCores = prev.cpu.cores.map((c) => ({
           ...c,
           usage: Math.min(100, Math.max(5, Math.round(newCpuUsage + (Math.random() - 0.5) * 22))),
         }));
 
-        // History
         const newCpuHistory = [...prev.cpu.history.slice(1), newCpuUsage];
         const newRamHistory = [...prev.ram.history.slice(1), prev.ram.usagePercent];
-
-        // Freq & Temp
         const newFreq = Number((4.1 + (newCpuUsage / 100) * 0.85).toFixed(2));
         const newTemp = Math.min(85, Math.max(38, Math.round(42 + (newCpuUsage / 100) * 32)));
-
-        // Network jitter
-        const newDl = Math.round(1800 + Math.random() * 4500);
-        const newUl = Math.round(400 + Math.random() * 1200);
 
         return {
           ...prev,
@@ -131,26 +353,35 @@ export default function App() {
           },
           network: {
             ...prev.network,
-            downloadSpeedKbps: newDl,
-            uploadSpeedKbps: newUl,
+            downloadSpeedKbps: Math.round(1800 + Math.random() * 4500),
+            uploadSpeedKbps: Math.round(400 + Math.random() * 1200),
             pingMs: Math.round(12 + Math.random() * 6),
           },
         };
       });
     }, 1500);
 
-    return () => clearInterval(interval);
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
   }, [isPaused, processes]);
 
   // Purge RAM Action
-  const handlePurgeRam = () => {
+  const handlePurgeRam = async () => {
     setIsPurgingRam(true);
     playChime('purge');
+
+    if (window.electronAPI?.purgeRam) {
+      try {
+        await window.electronAPI.purgeRam();
+      } catch {}
+    }
 
     setTimeout(() => {
       setHardwareStats((prev) => {
         const freedGb = Number((1.6 + Math.random() * 0.8).toFixed(1));
-        const newUsed = Math.max(3.2, Number((prev.ram.usedGb - freedGb).toFixed(1)));
+        const newUsed = Math.max(2.5, Number((prev.ram.usedGb - freedGb).toFixed(1)));
         const newFree = Number((prev.ram.totalGb - newUsed).toFixed(1));
         const newCached = Number((prev.ram.cachedGb * 0.35).toFixed(1));
         const newPct = Math.round((newUsed / prev.ram.totalGb) * 100);
@@ -168,7 +399,7 @@ export default function App() {
       });
       setIsPurgingRam(false);
       playChime('success');
-    }, 1200);
+    }, 1000);
   };
 
   // Junk Cleaner Handlers
@@ -182,7 +413,15 @@ export default function App() {
     setJunkItems((prev) => prev.map((item) => ({ ...item, selected: select })));
   };
 
-  const handleCleanJunkItems = (cleanedIds: string[]) => {
+  const handleCleanJunkItems = async (cleanedIds: string[]) => {
+    if (window.electronAPI?.cleanJunk) {
+      try {
+        await window.electronAPI.cleanJunk(cleanedIds);
+      } catch (err) {
+        console.error('Failed to clean junk in Windows:', err);
+      }
+    }
+
     const cleanedItems = junkItems.filter((i) => cleanedIds.includes(i.id));
     const freedBytes = cleanedItems.reduce((acc, i) => acc + i.sizeBytes, 0);
     const freedGb = Math.round(freedBytes / (1024 * 1024 * 1024));
@@ -191,7 +430,7 @@ export default function App() {
 
     // Reclaim disk space
     setHardwareStats((prev) => {
-      const newUsed = Math.max(100, prev.disk.mainPartition.usedGb - freedGb);
+      const newUsed = Math.max(50, prev.disk.mainPartition.usedGb - freedGb);
       const newFree = prev.disk.mainPartition.totalGb - newUsed;
       const newPct = Math.round((newUsed / prev.disk.mainPartition.totalGb) * 100);
 
@@ -213,34 +452,65 @@ export default function App() {
   };
 
   // Startup App Handlers
-  const handleToggleStartupApp = (id: string) => {
+  const handleToggleStartupApp = async (id: string) => {
+    const target = startupApps.find((app) => app.id === id);
+    if (!target) return;
+    const newEnabled = !target.enabled;
+
     setStartupApps((prev) =>
-      prev.map((app) => (app.id === id ? { ...app, enabled: !app.enabled } : app))
+      prev.map((app) => (app.id === id ? { ...app, enabled: newEnabled } : app))
     );
+
+    if (window.electronAPI?.toggleStartupApp) {
+      try {
+        await window.electronAPI.toggleStartupApp(target.name, newEnabled);
+      } catch (err) {
+        console.error('Failed to toggle startup app in Windows:', err);
+      }
+    }
   };
 
-  const handleApplyRecommendedStartup = () => {
+  const handleApplyRecommendedStartup = async () => {
+    const toDisable: string[] = [];
     setStartupApps((prev) =>
-      prev.map((app) =>
-        app.impact === 'Alto' && app.category !== 'Seguridad'
-          ? { ...app, enabled: false }
-          : app
-      )
+      prev.map((app) => {
+        if (app.impact === 'Alto' && app.category !== 'Seguridad') {
+          toDisable.push(app.name);
+          return { ...app, enabled: false };
+        }
+        return app;
+      })
     );
+
+    if (window.electronAPI?.toggleStartupApp) {
+      for (const name of toDisable) {
+        try {
+          await window.electronAPI.toggleStartupApp(name, false);
+        } catch {}
+      }
+    }
     playChime('success');
   };
 
   // Process Handlers
-  const handleKillProcess = (pid: number) => {
+  const handleKillProcess = async (pid: number) => {
     const killed = processes.find((p) => p.pid === pid);
     if (!killed) return;
 
     setProcesses((prev) => prev.filter((p) => p.pid !== pid));
 
+    if (window.electronAPI?.killProcess) {
+      try {
+        await window.electronAPI.killProcess(pid);
+      } catch (err) {
+        console.error('Failed to terminate process in Windows:', err);
+      }
+    }
+
     // Instant hardware relief
     setHardwareStats((prev) => {
       const ramFreedGb = Number((killed.ramMb / 1024).toFixed(1));
-      const newUsed = Math.max(3.0, Number((prev.ram.usedGb - ramFreedGb).toFixed(1)));
+      const newUsed = Math.max(2.5, Number((prev.ram.usedGb - ramFreedGb).toFixed(1)));
       return {
         ...prev,
         ram: {
@@ -349,34 +619,31 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans">
-      {/* Sidebar */}
-      <Sidebar
-        currentTab={currentTab}
-        onSelectTab={(tab) => {
-          setCurrentTab(tab);
-          playChime('click');
-        }}
-        junkTotalBytes={totalJunkBytes}
-        registryIssuesCount={registryIssues.length}
-        cpuTemp={hardwareStats.cpu.temp}
-        diskFreeGb={hardwareStats.disk.mainPartition.freeGb}
+    <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
+      {/* App Header & Real Windows Frame */}
+      <Header
+        currentTabName={getTabTitle()}
+        osName={sysInfo.osName}
+        onQuickCleanClick={() => setIsOneClickModalOpen(true)}
+        onPurgeRam={handlePurgeRam}
+        isPurgingRam={isPurgingRam}
+        onOpenAuditModal={() => setIsAuditModalOpen(true)}
       />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top Header */}
-        <Header
-          currentTabName={getTabTitle()}
-          osName={sysInfo.osName}
-          onQuickCleanClick={() => setIsOneClickModalOpen(true)}
-          onPurgeRam={handlePurgeRam}
-          isPurgingRam={isPurgingRam}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Navigation Sidebar */}
+        <Sidebar
+          currentTab={currentTab}
+          onSelectTab={setCurrentTab}
+          junkTotalBytes={totalJunkBytes}
+          registryIssuesCount={registryIssues.length}
+          cpuTemp={hardwareStats.cpu.temp}
+          diskFreeGb={hardwareStats.disk.mainPartition.freeGb}
         />
 
-        {/* Viewport Content */}
-        <main className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-7xl mx-auto">
+        {/* Dynamic Main Workspace */}
+        <main className="flex-1 overflow-y-auto bg-slate-950/95 p-6 custom-scrollbar">
+          <div className="max-w-6xl mx-auto space-y-6">
             {currentTab === 'hardware' && (
               <HardwareMonitor
                 stats={hardwareStats}
@@ -385,6 +652,9 @@ export default function App() {
                 onPurgeRam={handlePurgeRam}
                 isPurgingRam={isPurgingRam}
                 onQuickCleanClick={() => setIsOneClickModalOpen(true)}
+                onOpenAuditModal={() => setIsAuditModalOpen(true)}
+                isHardwareVerified={Boolean(verifiedSpecs?.isVerified)}
+                analyzedAt={verifiedSpecs?.analyzedAt}
               />
             )}
 
@@ -403,6 +673,9 @@ export default function App() {
                 apps={startupApps}
                 onToggleApp={handleToggleStartupApp}
                 onApplyRecommended={handleApplyRecommendedStartup}
+                onRefresh={fetchStartupApps}
+                isRefreshing={isScanningStartup}
+                biosTimeSeconds={sysInfo.biosTimeSeconds || 5.9}
               />
             )}
 
@@ -413,6 +686,8 @@ export default function App() {
                 onToggleSuspendProcess={handleToggleSuspendProcess}
                 onChangePriority={handleChangePriority}
                 onOptimizeBackground={handleOptimizeBackground}
+                onRefresh={fetchProcesses}
+                isRefreshing={isScanningProcesses}
               />
             )}
 
@@ -442,6 +717,15 @@ export default function App() {
         onClose={() => setIsOneClickModalOpen(false)}
         onFinishOptimization={handleFinishOneClickOptimization}
         totalJunkBytes={totalJunkBytes}
+      />
+
+      {/* Hardware Audit and PC Inspection Modal */}
+      <HardwareAuditModal
+        isOpen={isAuditModalOpen}
+        onClose={() => setIsAuditModalOpen(false)}
+        onApplySpecs={handleApplySpecs}
+        currentStats={hardwareStats}
+        currentSysInfo={sysInfo}
       />
     </div>
   );
